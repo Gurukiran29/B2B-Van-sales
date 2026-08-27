@@ -1,10 +1,14 @@
 # Build directories
+target/
 **/target/
+dist/
 **/dist/
+build/
 **/build/
 .gradle/
 
 # Dependencies
+node_modules/
 **/node_modules/
 .pnp
 .pnp.js
@@ -17,8 +21,8 @@
 .env.production.local
 
 # Local database files
-**/data/*.db
-**/data/*.lock.db
+data/
+**/data/
 *.mv.db
 *.lock.db
 *.trace.db
