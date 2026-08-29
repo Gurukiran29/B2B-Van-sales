@@ -17,6 +17,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     
     List<Product> findByCreatedBy(User createdBy);
     List<Product> findByCreatedByAndCategoryIgnoreCase(User createdBy, String category);
+    List<Product> findByCategoryIgnoreCase(String category);
 
     @Query("SELECT DISTINCT p.category FROM Product p WHERE p.createdBy = :user ORDER BY p.category")
     List<String> findDistinctCategoriesByCreatedBy(@Param("user") User user);
