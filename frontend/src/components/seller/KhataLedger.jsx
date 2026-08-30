@@ -2,17 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { shopApi, paymentApi } from '../../services/api';
 import { 
   BookOpen, Search, MapPin, IndianRupee, Phone, Plus,
-  FileText, X, AlertCircle, Store
+  FileText, X, AlertCircle, Store, Navigation
 } from 'lucide-react';
 import ReceiptModal from '../common/ReceiptModal';
 import AddShopModal from './AddShopModal';
 
 const KhataLedger = ({ showNotification }) => {
   const [shops, setShops] = useState([]);
-  const [villages, setVillages] = useState([]);
-  const [routes, setRoutes] = useState([]);
-  const [selectedVillage, setSelectedVillage] = useState('ALL');
   const [selectedRoute, setSelectedRoute] = useState('ALL');
+  const [selectedVillage, setSelectedVillage] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
   const [settlingShop, setSettlingShop] = useState(null);
@@ -34,32 +32,43 @@ const KhataLedger = ({ showNotification }) => {
 
   const fetchLedgerData = async () => {
     try {
-      const [shopsRes, villRes, routeRes] = await Promise.all([
-        shopApi.getAll(),
-        shopApi.getVillages(),
-        shopApi.getRoutes()
-      ]);
-      setShops(shopsRes.data || []);
-      setVillages(villRes.data || []);
-      setRoutes(routeRes.data || []);
+      const res = await shopApi.getAll();
+      setShops(res.data || []);
     } catch (err) {
       console.error(err);
       showNotification('Failed to load Khata ledger data', 'error');
     }
   };
 
+  // Distinct routes present in user's shops from database
+  const distinctRoutes = Array.from(new Set(shops.map(s => s.route).filter(Boolean))).sort();
+
+  const handleRouteChange = (newRoute) => {
+    setSelectedRoute(newRoute);
+    setSelectedVillage('ALL');
+  };
+
+  // Cascading Available Villages based on selectedRoute
+  const availableVillages = Array.from(new Set(
+    shops
+      .filter(s => selectedRoute === 'ALL' || s.route === selectedRoute)
+      .map(s => s.village)
+      .filter(Boolean)
+  )).sort();
+
+  // Filtered shops based on Cascading Route -> Village -> Search
   const filteredShops = shops.filter(shop => {
-    const matchesVillage = selectedVillage === 'ALL' || shop.village === selectedVillage;
     const matchesRoute = selectedRoute === 'ALL' || shop.route === selectedRoute;
+    const matchesVillage = selectedVillage === 'ALL' || shop.village === selectedVillage;
     const matchesSearch = searchQuery === '' ||
       shop.shopName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       shop.ownerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       shop.phoneNumber.includes(searchQuery);
-    return matchesVillage && matchesRoute && matchesSearch;
+    return matchesRoute && matchesVillage && matchesSearch;
   });
 
-  const totalMarketCredit = shops.reduce((acc, s) => acc + parseFloat(s.outstandingBalance || 0), 0);
-  const shopsWithCreditCount = shops.filter(s => parseFloat(s.outstandingBalance || 0) > 0).length;
+  const totalMarketCredit = filteredShops.reduce((acc, s) => acc + parseFloat(s.outstandingBalance || 0), 0);
+  const shopsWithCreditCount = filteredShops.filter(s => parseFloat(s.outstandingBalance || 0) > 0).length;
 
   const handleSettleSubmit = async (e) => {
     e.preventDefault();
@@ -114,14 +123,19 @@ const KhataLedger = ({ showNotification }) => {
 
   return (
     <div className="space-y-6">
+      {/* Overview Cards for Selected Route */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-5 rounded-2xl shadow-sm flex items-center justify-between">
           <div>
-            <span className="text-xs font-semibold text-slate-400 block">Total Market Khata Credit</span>
+            <span className="text-xs font-semibold text-slate-400 block">
+              {selectedRoute === 'ALL' ? 'Total Market Credit' : `Credit Due: ${selectedRoute}`}
+            </span>
             <span className="text-2xl font-bold font-mono text-amber-400 mt-1 block">
               ₹{totalMarketCredit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
-            <span className="text-[11px] text-slate-400">Total outstanding balance in villages</span>
+            <span className="text-[11px] text-slate-400">
+              Across {filteredShops.length} shops in view
+            </span>
           </div>
           <div className="p-3 bg-amber-500/20 text-amber-400 rounded-2xl">
             <BookOpen className="w-6 h-6" />
@@ -132,7 +146,7 @@ const KhataLedger = ({ showNotification }) => {
           <div>
             <span className="text-xs font-semibold text-slate-500 block">Shops with Credit Dues</span>
             <span className="text-2xl font-bold text-red-600 mt-1 block">
-              {shopsWithCreditCount} <span className="text-sm font-normal text-slate-500">/ {shops.length} shops</span>
+              {shopsWithCreditCount} <span className="text-sm font-normal text-slate-500">/ {filteredShops.length} in route</span>
             </span>
             <span className="text-[11px] text-slate-500">Require repayment follow-up</span>
           </div>
@@ -143,11 +157,13 @@ const KhataLedger = ({ showNotification }) => {
 
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
           <div>
-            <span className="text-xs font-semibold text-slate-500 block">Covered Rural Villages</span>
+            <span className="text-xs font-semibold text-slate-500 block">Covered Villages</span>
             <span className="text-2xl font-bold text-slate-900 mt-1 block">
-              {villages.length} Villages
+              {availableVillages.length} Villages
             </span>
-            <span className="text-[11px] text-slate-500">Across {routes.length} delivery routes</span>
+            <span className="text-[11px] text-slate-500">
+              {selectedRoute === 'ALL' ? 'Across all routes' : `On ${selectedRoute}`}
+            </span>
           </div>
           <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl">
             <MapPin className="w-6 h-6" />
@@ -155,70 +171,106 @@ const KhataLedger = ({ showNotification }) => {
         </div>
       </div>
 
+      {/* PRIMARY FILTER: DELIVERY ROUTE -> CASCADING VILLAGE FILTER */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-        <div className="flex flex-col md:flex-row gap-3 items-center justify-between">
-          <div className="relative flex-1 w-full">
-            <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search shop by name, owner, or phone number..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
+        {/* Route filter */}
+        <div>
+          <label className="text-xs font-bold text-slate-800 block mb-2 flex items-center gap-1.5">
+            <Navigation className="w-4 h-4 text-brand-600" />
+            1. Filter by Delivery Route:
+          </label>
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+            <button
+              onClick={() => handleRouteChange('ALL')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl whitespace-nowrap transition ${
+                selectedRoute === 'ALL'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              All Routes ({distinctRoutes.length})
+            </button>
+            {distinctRoutes.map((routeName) => {
+              const isSelected = selectedRoute === routeName;
+              return (
+                <button
+                  key={routeName}
+                  onClick={() => handleRouteChange(routeName)}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-xl whitespace-nowrap transition ${
+                    isSelected
+                      ? 'bg-brand-600 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  {routeName}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Cascading Village & Search Filter */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 pt-3 border-t border-slate-100 items-center">
+          <div className="md:col-span-4 space-y-1">
+            <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+              <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+              2. Filter Village in Route:
+            </label>
+            <select
+              value={selectedVillage}
+              onChange={(e) => setSelectedVillage(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 text-xs font-bold text-slate-900 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              <option value="ALL">All Villages ({availableVillages.length})</option>
+              {availableVillages.map(v => (
+                <option key={v} value={v}>{v}</option>
+              ))}
+            </select>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-            {villages.length > 0 && (
-              <select
-                value={selectedVillage}
-                onChange={(e) => setSelectedVillage(e.target.value)}
-                className="bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
-              >
-                <option value="ALL">All Villages ({villages.length})</option>
-                {villages.map(v => (
-                  <option key={v} value={v}>{v}</option>
-                ))}
-              </select>
-            )}
+          <div className="md:col-span-6 space-y-1">
+            <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+              <Search className="w-3.5 h-3.5 text-slate-400" />
+              Search Shop / Owner / Phone:
+            </label>
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search by shop name, owner, or phone..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+          </div>
 
-            {routes.length > 0 && (
-              <select
-                value={selectedRoute}
-                onChange={(e) => setSelectedRoute(e.target.value)}
-                className="bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
-              >
-                <option value="ALL">All Routes ({routes.length})</option>
-                {routes.map(r => (
-                  <option key={r} value={r}>{r}</option>
-                ))}
-              </select>
-            )}
-
+          <div className="md:col-span-2 flex items-end">
             <button
               onClick={() => setShowAddShopModal(true)}
-              className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-1.5 whitespace-nowrap"
+              className="w-full py-2 px-3 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-1 whitespace-nowrap"
             >
-              <Plus className="w-4 h-4" /> Add Village Shop
+              <Plus className="w-3.5 h-3.5" /> Add Shop
             </button>
           </div>
         </div>
       </div>
 
-      {shops.length === 0 ? (
+      {/* FILTERED SHOPS CARDS DISPLAY */}
+      {filteredShops.length === 0 ? (
         <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 shadow-sm space-y-4">
           <Store className="w-12 h-12 mx-auto text-slate-400" />
           <div>
-            <h3 className="text-base font-bold text-slate-900">No Digital Khata Ledgers Yet</h3>
+            <h3 className="text-base font-bold text-slate-900">No Shops Found for Selected Filters</h3>
             <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
-              Add retail stores in villages along your van route to track wholesale purchases, outstanding credit balances, and cash/UPI repayments.
+              No retail stores match route "{selectedRoute}" and village "{selectedVillage}".
             </p>
           </div>
           <button
             onClick={() => setShowAddShopModal(true)}
             className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-md transition inline-flex items-center gap-2"
           >
-            <Plus className="w-4 h-4" /> Add Your First Village Shop
+            <Plus className="w-4 h-4" /> Add Shop to {selectedRoute !== 'ALL' ? selectedRoute : 'Route'}
           </button>
         </div>
       ) : (
@@ -255,8 +307,8 @@ const KhataLedger = ({ showNotification }) => {
                       <span>{shop.phoneNumber}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
-                      <MapPin className="w-3 h-3 text-slate-400" />
-                      <span>{shop.route}</span>
+                      <Navigation className="w-3 h-3 text-slate-400" />
+                      <span className="font-semibold text-brand-700">{shop.route}</span>
                     </div>
                   </div>
 
@@ -408,7 +460,7 @@ const KhataLedger = ({ showNotification }) => {
                 <label className="font-semibold text-slate-700 block mb-1">Notes / Remarks:</label>
                 <input
                   type="text"
-                  placeholder="e.g. Weekly settlement, Diwali advance..."
+                  placeholder="e.g. Weekly settlement, advance payment..."
                   value={settleNotes}
                   onChange={(e) => setSettleNotes(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -445,180 +497,9 @@ const KhataLedger = ({ showNotification }) => {
         </div>
       )}
 
-      {statementShop && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full overflow-hidden border border-slate-200 max-h-[90vh] flex flex-col animate-in fade-in zoom-in duration-150">
-            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-bold">Khata Ledger Statement</h3>
-                <p className="text-xs text-brand-300 font-medium">{statementShop.shopName} • {statementShop.village}</p>
-              </div>
-              <button
-                onClick={() => { setStatementShop(null); setStatementData(null); }}
-                className="text-slate-400 hover:text-white p-1 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto space-y-6 text-xs flex-1">
-              {statementLoading || !statementData ? (
-                <div className="text-center py-12 text-slate-400">Loading ledger records...</div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                      <span className="text-slate-500 font-medium block">Total Billed Purchases</span>
-                      <span className="text-base font-bold font-mono text-slate-900 mt-0.5 block">
-                        ₹{parseFloat(statementData.totalBilledAmount || 0).toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200">
-                      <span className="text-emerald-700 font-medium block">Total Amount Paid</span>
-                      <span className="text-base font-bold font-mono text-emerald-900 mt-0.5 block">
-                        ₹{parseFloat(statementData.totalPaidAmount || 0).toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="bg-amber-50 p-3 rounded-xl border border-amber-200">
-                      <span className="text-amber-700 font-medium block">Current Outstanding Due</span>
-                      <span className="text-base font-bold font-mono text-red-600 mt-0.5 block">
-                        ₹{parseFloat(statementData.currentOutstandingBalance || 0).toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <h4 className="font-bold text-slate-900 text-sm">Past Orders & Invoices</h4>
-                    <div className="border border-slate-200 rounded-xl overflow-hidden">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
-                            <th className="py-2.5 px-3">Invoice #</th>
-                            <th className="py-2.5 px-3">Date</th>
-                            <th className="py-2.5 px-3 text-right">Total Bill</th>
-                            <th className="py-2.5 px-3 text-right">Paid</th>
-                            <th className="py-2.5 px-3 text-right">Balance Added</th>
-                            <th className="py-2.5 px-3 text-center">Status</th>
-                            <th className="py-2.5 px-3 text-center">Receipt</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {statementData.invoices?.length === 0 ? (
-                            <tr>
-                              <td colSpan="7" className="py-4 text-center text-slate-400">No invoices recorded yet.</td>
-                            </tr>
-                          ) : (
-                            statementData.invoices?.map(inv => (
-                              <tr key={inv.id} className="hover:bg-slate-50/50">
-                                <td className="py-2 px-3 font-mono font-bold text-slate-900">{inv.invoiceNumber}</td>
-                                <td className="py-2 px-3 text-slate-500 text-[11px]">
-                                  {new Date(inv.createdAt).toLocaleDateString('en-IN')}
-                                </td>
-                                <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
-                                  ₹{parseFloat(inv.totalAmount).toFixed(2)}
-                                </td>
-                                <td className="py-2 px-3 text-right font-mono text-emerald-700">
-                                  ₹{parseFloat(inv.amountPaid).toFixed(2)}
-                                </td>
-                                <td className="py-2 px-3 text-right font-mono text-red-600 font-semibold">
-                                  ₹{parseFloat(inv.balanceDue).toFixed(2)}
-                                </td>
-                                <td className="py-2 px-3 text-center">
-                                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                                    inv.paymentStatus === 'PAID'
-                                      ? 'bg-emerald-100 text-emerald-800'
-                                      : inv.paymentStatus === 'PARTIAL'
-                                      ? 'bg-amber-100 text-amber-800'
-                                      : 'bg-red-100 text-red-800'
-                                  }`}>
-                                    {inv.paymentStatus}
-                                  </span>
-                                </td>
-                                <td className="py-2 px-3 text-center">
-                                  <button
-                                    onClick={() => setSelectedReceipt(inv)}
-                                    className="p-1 text-brand-600 hover:text-brand-800 rounded hover:bg-brand-50"
-                                  >
-                                    <FileText className="w-4 h-4" />
-                                  </button>
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <h4 className="font-bold text-slate-900 text-sm">Khata Repayments & Settlement Logs</h4>
-                    <div className="border border-slate-200 rounded-xl overflow-hidden">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
-                            <th className="py-2.5 px-3">Date</th>
-                            <th className="py-2.5 px-3">Collector</th>
-                            <th className="py-2.5 px-3">Mode</th>
-                            <th className="py-2.5 px-3 text-right">Amount Settled</th>
-                            <th className="py-2.5 px-3 text-right">Previous Balance</th>
-                            <th className="py-2.5 px-3 text-right">Remaining Balance</th>
-                            <th className="py-2.5 px-3">Notes</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {statementData.payments?.length === 0 ? (
-                            <tr>
-                              <td colSpan="7" className="py-4 text-center text-slate-400">No payment settlements logged yet.</td>
-                            </tr>
-                          ) : (
-                            statementData.payments?.map(pay => (
-                              <tr key={pay.id} className="hover:bg-slate-50/50">
-                                <td className="py-2 px-3 text-slate-500 text-[11px]">
-                                  {new Date(pay.createdAt).toLocaleString('en-IN')}
-                                </td>
-                                <td className="py-2 px-3 font-medium text-slate-800">{pay.recordedByName}</td>
-                                <td className="py-2 px-3">
-                                  <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded text-[10px] font-bold">
-                                    {pay.paymentMode}
-                                  </span>
-                                </td>
-                                <td className="py-2 px-3 text-right font-mono font-bold text-emerald-700">
-                                  ₹{parseFloat(pay.amount).toFixed(2)}
-                                </td>
-                                <td className="py-2 px-3 text-right font-mono text-slate-500">
-                                  ₹{parseFloat(pay.previousBalance).toFixed(2)}
-                                </td>
-                                <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
-                                  ₹{parseFloat(pay.remainingBalance).toFixed(2)}
-                                </td>
-                                <td className="py-2 px-3 text-slate-500 text-[11px] truncate max-w-[120px]">
-                                  {pay.notes}
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="bg-slate-100 px-6 py-4 border-t border-slate-200 flex justify-end">
-              <button
-                onClick={() => { setStatementShop(null); setStatementData(null); }}
-                className="px-4 py-2 bg-white hover:bg-slate-200 text-slate-700 font-semibold rounded-xl border border-slate-300 transition text-xs"
-              >
-                Close Statement
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <AddShopModal
         isOpen={showAddShopModal}
+        defaultRoute={selectedRoute !== 'ALL' ? selectedRoute : ''}
         onClose={() => setShowAddShopModal(false)}
         onShopAdded={() => {
           fetchLedgerData();

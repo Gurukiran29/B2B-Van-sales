@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { shopApi } from '../../services/api';
 import { Store, X, MapPin, Navigation } from 'lucide-react';
 
-const AddShopModal = ({ isOpen, onClose, onShopAdded, showNotification }) => {
+const AddShopModal = ({ isOpen, onClose, onShopAdded, showNotification, defaultRoute = '' }) => {
   const [formData, setFormData] = useState({
     shopName: '',
     ownerName: '',
     phoneNumber: '',
     village: '',
-    route: '',
+    route: defaultRoute || '',
     initialOutstandingBalance: 0,
     address: '',
     gstNumber: '',
@@ -20,8 +20,11 @@ const AddShopModal = ({ isOpen, onClose, onShopAdded, showNotification }) => {
   useEffect(() => {
     if (isOpen) {
       loadSuggestions();
+      if (defaultRoute && defaultRoute !== 'ALL') {
+        setFormData(prev => ({ ...prev, route: defaultRoute }));
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, defaultRoute]);
 
   const loadSuggestions = async () => {
     try {
@@ -49,7 +52,7 @@ const AddShopModal = ({ isOpen, onClose, onShopAdded, showNotification }) => {
       return;
     }
     if (!formData.route.trim()) {
-      showNotification('Please enter the delivery route / zone name', 'warning');
+      showNotification('Please enter the delivery route name', 'warning');
       return;
     }
 
@@ -65,7 +68,7 @@ const AddShopModal = ({ isOpen, onClose, onShopAdded, showNotification }) => {
         initialOutstandingBalance: parseFloat(formData.initialOutstandingBalance) || 0,
       };
       const res = await shopApi.create(payload);
-      showNotification(`Shop "${formData.shopName}" registered successfully!`, 'success');
+      showNotification(`Shop "${formData.shopName}" registered on route "${formData.route}" successfully!`, 'success');
       if (onShopAdded) onShopAdded(res.data);
       setFormData({
         shopName: '',
@@ -94,7 +97,7 @@ const AddShopModal = ({ isOpen, onClose, onShopAdded, showNotification }) => {
             <Store className="w-5 h-5 text-brand-400" />
             <div>
               <h3 className="text-sm font-bold">Register New Village Retail Shop</h3>
-              <p className="text-xs text-slate-400">Add any rural store to your van delivery route</p>
+              <p className="text-xs text-slate-400">Add rural store to your delivery route</p>
             </div>
           </div>
           <button
@@ -107,18 +110,37 @@ const AddShopModal = ({ isOpen, onClose, onShopAdded, showNotification }) => {
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
           <div>
-            <label className="font-semibold text-slate-700 block mb-1">Shop / Store Name *</label>
+            <label className="font-semibold text-slate-700 block mb-1 flex items-center gap-1">
+              <Navigation className="w-3.5 h-3.5 text-brand-600" /> Delivery Route *
+            </label>
             <input
               type="text"
               required
-              placeholder="e.g. Balaji Kirana & General Store"
-              value={formData.shopName}
-              onChange={(e) => setFormData({ ...formData, shopName: e.target.value })}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+              list="routes-datalist"
+              placeholder="e.g. Route 1, North Zone, Main Highway Route..."
+              value={formData.route}
+              onChange={(e) => setFormData({ ...formData, route: e.target.value })}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
             />
+            <datalist id="routes-datalist">
+              {existingRoutes.map((r, i) => (
+                <option key={i} value={r} />
+              ))}
+            </datalist>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="font-semibold text-slate-700 block mb-1">Shop / Store Name *</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Balaji Kirana Store"
+                value={formData.shopName}
+                onChange={(e) => setFormData({ ...formData, shopName: e.target.value })}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
             <div>
               <label className="font-semibold text-slate-700 block mb-1">Owner Name *</label>
               <input
@@ -130,6 +152,9 @@ const AddShopModal = ({ isOpen, onClose, onShopAdded, showNotification }) => {
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="font-semibold text-slate-700 block mb-1">Phone Number (10 Digits) *</label>
               <input
@@ -142,9 +167,6 @@ const AddShopModal = ({ isOpen, onClose, onShopAdded, showNotification }) => {
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="font-semibold text-slate-700 block mb-1 flex items-center gap-1">
                 <MapPin className="w-3 h-3 text-slate-400" /> Village / Town *
@@ -161,25 +183,6 @@ const AddShopModal = ({ isOpen, onClose, onShopAdded, showNotification }) => {
               <datalist id="villages-datalist">
                 {existingVillages.map((v, i) => (
                   <option key={i} value={v} />
-                ))}
-              </datalist>
-            </div>
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1 flex items-center gap-1">
-                <Navigation className="w-3 h-3 text-slate-400" /> Delivery Route / Zone *
-              </label>
-              <input
-                type="text"
-                required
-                list="routes-datalist"
-                placeholder="e.g. Route 1 - Main Highway"
-                value={formData.route}
-                onChange={(e) => setFormData({ ...formData, route: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-              <datalist id="routes-datalist">
-                {existingRoutes.map((r, i) => (
-                  <option key={i} value={r} />
                 ))}
               </datalist>
             </div>
@@ -202,7 +205,7 @@ const AddShopModal = ({ isOpen, onClose, onShopAdded, showNotification }) => {
           </div>
 
           <div>
-            <label className="font-semibold text-slate-700 block mb-1">Address / Landmark / Location Details</label>
+            <label className="font-semibold text-slate-700 block mb-1">Address / Landmark Details (Optional)</label>
             <textarea
               rows="2"
               placeholder="e.g. Near Bus Stand, Main Market Chowk"
