@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { dashboardApi } from '../services/api';
 import QuickPOS from '../components/seller/QuickPOS';
-import VanInventory from '../components/seller/VanInventory';
+import VanStock from '../components/seller/VanStock';
+import GodownStock from '../components/seller/GodownStock';
+import ItemCatalog from '../components/seller/ItemCatalog';
 import KhataLedger from '../components/seller/KhataLedger';
 import AddShopModal from '../components/seller/AddShopModal';
 import { 
-  Zap, Package, BookOpen, BarChart3, Plus, Truck, 
-  IndianRupee, TrendingUp, AlertTriangle, Store, RefreshCw 
+  Zap, Truck, Warehouse, Tag, BookOpen, BarChart3, Plus, 
+  IndianRupee, TrendingUp, AlertTriangle, Store, RefreshCw
 } from 'lucide-react';
 
 const SellerDashboard = ({ showNotification }) => {
@@ -14,6 +16,7 @@ const SellerDashboard = ({ showNotification }) => {
   const [showAddShopModal, setShowAddShopModal] = useState(false);
   const [dashboardStats, setDashboardStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [activeRoute, setActiveRoute] = useState('ALL');
 
   useEffect(() => {
     fetchStats();
@@ -43,7 +46,7 @@ const SellerDashboard = ({ showNotification }) => {
             <span className="bg-brand-100 text-brand-800 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full">
               Van Sales Terminal
             </span>
-            <span className="text-xs text-slate-400 font-medium hidden sm:inline">• Live Route</span>
+            <span className="text-xs text-slate-400 font-medium hidden sm:inline">• Godown & Van Distribution</span>
           </div>
           <h1 className="text-xl font-black text-slate-900 mt-1">
             FMCG Wholesale & Van Distribution
@@ -53,42 +56,65 @@ const SellerDashboard = ({ showNotification }) => {
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <button
             onClick={() => setShowAddShopModal(true)}
-            className="flex-1 sm:flex-initial px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-1.5 whitespace-nowrap"
+            className="flex-1 sm:flex-initial px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-1.5 whitespace-nowrap"
           >
             <Plus className="w-4 h-4" /> Add Village Shop
           </button>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 bg-slate-200/80 p-1.5 rounded-2xl overflow-x-auto text-xs font-bold">
+      {/* Navigation Tabs */}
+      <div className="flex items-center gap-2 bg-slate-200/90 p-1.5 rounded-2xl overflow-x-auto text-xs font-bold shadow-inner">
         <button
           onClick={() => setActiveTab('pos')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl whitespace-nowrap transition ${
             activeTab === 'pos'
-              ? 'bg-brand-600 text-white shadow-md shadow-brand-500/20'
-              : 'text-slate-700 hover:text-slate-900 hover:bg-white/60'
+              ? 'bg-brand-600 text-white shadow-md shadow-brand-500/25 ring-2 ring-brand-400/40'
+              : 'text-slate-700 hover:text-slate-900 hover:bg-white/70'
           }`}
         >
           <Zap className="w-4 h-4" /> Quick POS / Van Bill
         </button>
 
         <button
-          onClick={() => setActiveTab('inventory')}
+          onClick={() => setActiveTab('van-stock')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl whitespace-nowrap transition ${
-            activeTab === 'inventory'
-              ? 'bg-brand-600 text-white shadow-md shadow-brand-500/20'
-              : 'text-slate-700 hover:text-slate-900 hover:bg-white/60'
+            activeTab === 'van-stock'
+              ? 'bg-brand-600 text-white shadow-md shadow-brand-500/25 ring-2 ring-brand-400/40'
+              : 'text-slate-700 hover:text-slate-900 hover:bg-white/70'
           }`}
         >
-          <Package className="w-4 h-4" /> Van Stock & Inventory
+          <Truck className="w-4 h-4" /> Van Stock
+        </button>
+
+        <button
+          onClick={() => setActiveTab('godown-stock')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl whitespace-nowrap transition ${
+            activeTab === 'godown-stock'
+              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/25 ring-2 ring-indigo-400/40'
+              : 'text-slate-700 hover:text-slate-900 hover:bg-white/70'
+          }`}
+        >
+          <Warehouse className="w-4 h-4" /> Godown Stocks (Warehouse)
+        </button>
+
+        <button
+          onClick={() => setActiveTab('items')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl whitespace-nowrap transition ${
+            activeTab === 'items'
+              ? 'bg-brand-600 text-white shadow-md shadow-brand-500/25 ring-2 ring-brand-400/40'
+              : 'text-slate-700 hover:text-slate-900 hover:bg-white/70'
+          }`}
+        >
+          <Tag className="w-4 h-4" /> Items Catalog
         </button>
 
         <button
           onClick={() => setActiveTab('khata')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl whitespace-nowrap transition ${
             activeTab === 'khata'
-              ? 'bg-brand-600 text-white shadow-md shadow-brand-500/20'
-              : 'text-slate-700 hover:text-slate-900 hover:bg-white/60'
+              ? 'bg-brand-600 text-white shadow-md shadow-brand-500/25 ring-2 ring-brand-400/40'
+              : 'text-slate-700 hover:text-slate-900 hover:bg-white/70'
           }`}
         >
           <BookOpen className="w-4 h-4" /> Digital Khata Ledger
@@ -98,8 +124,8 @@ const SellerDashboard = ({ showNotification }) => {
           onClick={() => { setActiveTab('metrics'); fetchStats(); }}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl whitespace-nowrap transition ${
             activeTab === 'metrics'
-              ? 'bg-brand-600 text-white shadow-md shadow-brand-500/20'
-              : 'text-slate-700 hover:text-slate-900 hover:bg-white/60'
+              ? 'bg-brand-600 text-white shadow-md shadow-brand-500/25 ring-2 ring-brand-400/40'
+              : 'text-slate-700 hover:text-slate-900 hover:bg-white/70'
           }`}
         >
           <BarChart3 className="w-4 h-4" /> Today's Sales Metrics
@@ -108,17 +134,41 @@ const SellerDashboard = ({ showNotification }) => {
 
       {activeTab === 'pos' && (
         <QuickPOS
+          externalRoute={activeRoute}
+          onRouteSelect={(r) => setActiveRoute(r)}
           onInvoiceCreated={handleInvoiceCreated}
           showNotification={showNotification}
         />
       )}
 
-      {activeTab === 'inventory' && (
-        <VanInventory showNotification={showNotification} />
+      {activeTab === 'van-stock' && (
+        <VanStock
+          showNotification={showNotification}
+          onNavigateToPOS={() => setActiveTab('pos')}
+          onNavigateToGodown={() => setActiveTab('godown-stock')}
+        />
+      )}
+
+      {activeTab === 'godown-stock' && (
+        <GodownStock
+          showNotification={showNotification}
+          onNavigateToVan={() => setActiveTab('van-stock')}
+          onNavigateToItems={() => setActiveTab('items')}
+        />
+      )}
+
+      {activeTab === 'items' && (
+        <ItemCatalog
+          showNotification={showNotification}
+          onNavigateToGodown={() => setActiveTab('godown-stock')}
+          onNavigateToVan={() => setActiveTab('van-stock')}
+        />
       )}
 
       {activeTab === 'khata' && (
-        <KhataLedger showNotification={showNotification} />
+        <KhataLedger
+          showNotification={showNotification}
+        />
       )}
 
       {activeTab === 'metrics' && (
@@ -156,61 +206,12 @@ const SellerDashboard = ({ showNotification }) => {
               <span className="text-[11px] text-slate-400">{dashboardStats?.shopsWithCreditCount || 0} shops with credit</span>
             </div>
           </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-3">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                <Store className="w-4 h-4 text-amber-600" /> High Outstanding Credit Shops
-              </h3>
-              <div className="divide-y divide-slate-100 text-xs">
-                {dashboardStats?.topCreditShops?.length === 0 ? (
-                  <p className="text-slate-400 py-4 text-center">No outstanding credit recorded.</p>
-                ) : (
-                  dashboardStats?.topCreditShops?.map(shop => (
-                    <div key={shop.id} className="py-2.5 flex items-center justify-between">
-                      <div>
-                        <span className="font-bold text-slate-900">{shop.shopName}</span>
-                        <span className="text-[11px] text-slate-500 block">{shop.village} ({shop.ownerName})</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="font-mono font-bold text-red-600 text-sm">
-                          ₹{parseFloat(shop.outstandingBalance).toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-3">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                <AlertTriangle className="w-4 h-4 text-red-500" /> Van Inventory Alerts (Low Stock)
-              </h3>
-              <div className="divide-y divide-slate-100 text-xs">
-                {dashboardStats?.lowStockAlerts?.length === 0 ? (
-                  <p className="text-slate-400 py-4 text-center">All products well-stocked in the van!</p>
-                ) : (
-                  dashboardStats?.lowStockAlerts?.map(item => (
-                    <div key={item.id} className="py-2.5 flex items-center justify-between">
-                      <div>
-                        <span className="font-bold text-slate-900">{item.name}</span>
-                        <span className="text-[11px] text-slate-500 block font-mono">{item.sku}</span>
-                      </div>
-                      <span className="bg-red-100 text-red-800 font-bold px-2 py-0.5 rounded-full text-xs font-mono">
-                        {item.stockInDozens} Doz Remaining
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
       <AddShopModal
         isOpen={showAddShopModal}
+        defaultRoute={activeRoute !== 'ALL' ? activeRoute : ''}
         onClose={() => setShowAddShopModal(false)}
         onShopAdded={() => {
           showNotification('New shop added to the van route!', 'success');
