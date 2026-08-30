@@ -76,15 +76,10 @@ public class DashboardService {
                 .map(Invoice::getTotalAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal todayInvoiceCashPaid = todayInvoices.stream()
-                .map(Invoice::getAmountPaid)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        BigDecimal todayRepayments = todayPayments.stream()
+        // Total cash/UPI collections today (from PaymentRecords: includes both invoice spot payments and Khata repayments)
+        BigDecimal todayCollections = todayPayments.stream()
                 .map(PaymentRecord::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        BigDecimal todayCollections = todayInvoiceCashPaid.add(todayRepayments);
 
         BigDecimal todayCreditGiven = todayInvoices.stream()
                 .map(Invoice::getBalanceDue)

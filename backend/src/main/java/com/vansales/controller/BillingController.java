@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -55,5 +56,15 @@ public class BillingController {
     @GetMapping("/shop/{shopId}")
     public ResponseEntity<List<InvoiceResponse>> getInvoicesByShopId(@PathVariable Long shopId) {
         return ResponseEntity.ok(billingService.getInvoicesByShopId(shopId));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SELLER', 'ADMIN')")
+    public ResponseEntity<Void> deleteInvoice(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        String phone = userDetails != null ? userDetails.getUsername() : null;
+        billingService.deleteInvoice(id, phone);
+        return ResponseEntity.noContent().build();
     }
 }

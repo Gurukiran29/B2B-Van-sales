@@ -5,7 +5,6 @@ import com.vansales.dto.InvoiceItemResponse;
 import com.vansales.dto.InvoiceRequest;
 import com.vansales.dto.InvoiceResponse;
 import com.vansales.exception.BadRequestException;
-import com.vansales.exception.InsufficientStockException;
 import com.vansales.exception.ResourceNotFoundException;
 import com.vansales.exception.UnauthorizedException;
 import com.vansales.model.*;
@@ -30,22 +29,20 @@ public class BillingService {
 
     private final InvoiceRepository invoiceRepository;
     private final InvoiceItemRepository invoiceItemRepository;
-    private final ProductRepository productRepository;
     private final ShopRepository shopRepository;
+    private final ProductRepository productRepository;
     private final UserRepository userRepository;
     private final PaymentRecordRepository paymentRecordRepository;
 
     @Transactional
-    public InvoiceResponse createInvoice(InvoiceRequest request, String currentUserPhone) {
-        User seller = userRepository.findByPhoneNumber(currentUserPhone)
-                .orElseThrow(() -> new UnauthorizedException("User not authenticated"));
-
+    public InvoiceResponse createInvoice(InvoiceRequest request, String sellerPhoneNumber) {
         Shop shop = shopRepository.findById(request.getShopId())
                 .orElseThrow(() -> new ResourceNotFoundException("Shop not found with id: " + request.getShopId()));
 
-        if (request.getItems() == null || request.getItems().isEmpty()) {
-            throw new BadRequestException("Invoice must contain at least one item");
-        }
+        User seller = userRepository.findByPhoneNumber(sellerPhoneNumber)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with phone: " + sellerPhoneNumber));
+
+        String invoiceNumber = generateInvoiceNumber();
 
         BigDecimal totalAmount = BigDecimal.ZERO;
         List<InvoiceItem> invoiceItems = new ArrayList<>();
@@ -54,67 +51,74 @@ public class BillingService {
             Product product = productRepository.findById(itemReq.getProductId())
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + itemReq.getProductId()));
 
+            int dozensPerBox = (product.getDozensPerBox() != null && product.getDozensPerBox() > 0) ? product.getDozensPerBox() : 1;
             int boxes = itemReq.getBoxesCount() != null ? itemReq.getBoxesCount() : 0;
-            int loose = itemReq.getLooseDozens() != null ? itemReq.getLooseDozens() : 0;
-            int totalDozensToDeduct = (boxes * product.getDozensPerBox()) + loose;
+            int looseDozens = itemReq.getLooseDozens() != null ? itemReq.getLooseDozens() : 0;
+            int requestedDozens = (boxes * dozensPerBox) + looseDozens;
 
-            if (totalDozensToDeduct <= 0) {
+            if (requestedDozens <= 0) {
                 continue;
             }
 
-            // Deduct strictly from Van Stock
-            if (product.getStockInDozens() < totalDozensToDeduct) {
-                throw new InsufficientStockException(
-                        String.format("Insufficient Van stock for %s. Requested: %d dozens, Available in Van: %d dozens. Please load stock from Godown first!",
-                                product.getName(), totalDozensToDeduct, product.getStockInDozens())
-                );
+            int currentVanStock = product.getStockInDozens() != null ? product.getStockInDozens() : 0;
+            if (currentVanStock < requestedDozens) {
+                        "Insufficient Van Stock for product %s! Available: %d units (%d boxes, %d loose), Requested: %d units (%d boxes, %d loose)",
+                        product.getName(),
+                        currentVanStock,
+                        currentVanStock / dozensPerBox,
+                        currentVanStock % dozensPerBox,
+                        requestedDozens,
+                        boxes,
+                        looseDozens
+                ));
             }
 
-            product.setStockInDozens(product.getStockInDozens() - totalDozensToDeduct);
+            // Deduct strictly from Van Stock
+            product.setStockInDozens(currentVanStock - requestedDozens);
             productRepository.save(product);
 
-            // Calculate pricing: if whole boxes, apply box offer price; loose dozens at pricePerDozen
-            BigDecimal boxesPrice = product.getEffectiveBoxPrice().multiply(BigDecimal.valueOf(boxes));
-            BigDecimal loosePrice = product.getPricePerDozen().multiply(BigDecimal.valueOf(loose));
-            BigDecimal itemSubtotal = boxesPrice.add(loosePrice);
+            BigDecimal effectiveBoxPrice = product.getEffectiveBoxPrice();
+            BigDecimal pricePerDozen = product.getPricePerDozen() != null ? product.getPricePerDozen() : BigDecimal.ZERO;
 
-            totalAmount = totalAmount.add(itemSubtotal);
+            BigDecimal boxTotal = effectiveBoxPrice.multiply(BigDecimal.valueOf(boxes));
+            BigDecimal looseTotal = pricePerDozen.multiply(BigDecimal.valueOf(looseDozens));
+            BigDecimal itemSubtotal = boxTotal.add(looseTotal);
 
             InvoiceItem invoiceItem = InvoiceItem.builder()
                     .product(product)
                     .boxesCount(boxes)
-                    .looseDozens(loose)
-                    .totalDozens(totalDozensToDeduct)
-                    .pricePerDozen(product.getPricePerDozen())
+                    .looseDozens(looseDozens)
+                    .totalDozens(requestedDozens)
+                    .pricePerDozen(pricePerDozen)
                     .subtotal(itemSubtotal)
                     .build();
 
             invoiceItems.add(invoiceItem);
+            totalAmount = totalAmount.add(itemSubtotal);
         }
 
         if (invoiceItems.isEmpty()) {
-            throw new BadRequestException("No valid items with quantity > 0 in invoice");
+            throw new BadRequestException("Invoice must contain at least one product item with quantity > 0");
         }
 
         BigDecimal amountPaid = request.getAmountPaid() != null ? request.getAmountPaid() : BigDecimal.ZERO;
-        if (amountPaid.compareTo(totalAmount) > 0) {
-            amountPaid = totalAmount;
+        PaymentMode paymentMode = request.getPaymentMode() != null ? request.getPaymentMode() : PaymentMode.CASH;
+
+        if (amountPaid.compareTo(BigDecimal.ZERO) < 0) {
+            throw new BadRequestException("Amount paid cannot be negative");
         }
 
         BigDecimal balanceDue = totalAmount.subtract(amountPaid);
-
         PaymentStatus paymentStatus;
-        if (amountPaid.compareTo(BigDecimal.ZERO) == 0) {
-            paymentStatus = PaymentStatus.UNPAID;
-        } else if (amountPaid.compareTo(totalAmount) >= 0) {
+
+        if (balanceDue.compareTo(BigDecimal.ZERO) <= 0) {
             paymentStatus = PaymentStatus.PAID;
-        } else {
+            balanceDue = BigDecimal.ZERO;
+        } else if (amountPaid.compareTo(BigDecimal.ZERO) > 0) {
             paymentStatus = PaymentStatus.PARTIAL;
+        } else {
+            paymentStatus = PaymentStatus.UNPAID;
         }
-
-        PaymentMode paymentMode = request.getPaymentMode() != null ? request.getPaymentMode() : PaymentMode.CASH;
-
-        String invoiceNumber = generateInvoiceNumber();
 
         Invoice invoice = Invoice.builder()
                 .invoiceNumber(invoiceNumber)
@@ -169,17 +173,34 @@ public class BillingService {
         User currentUser = userRepository.findByPhoneNumber(currentUserPhone)
                 .orElseThrow(() -> new UnauthorizedException("User not authenticated"));
 
+        User sellerTarget = (currentUser.getRole() == Role.ROLE_SELLER) ? currentUser : null;
+
         List<Invoice> invoices;
-        if (currentUser.getRole() == Role.ROLE_BUYER) {
-            Shop buyerShop = currentUser.getShop();
-            if (buyerShop == null) {
-                return Collections.emptyList();
+        if (currentUser.getRole() == Role.ROLE_ADMIN) {
+            if (shopId != null) {
+                invoices = invoiceRepository.findByShopIdOrderByCreatedAtDesc(shopId);
+            } else {
+                invoices = invoiceRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
             }
-            invoices = invoiceRepository.findByShopIdOrderByCreatedAtDesc(buyerShop.getId());
-        } else if (shopId != null) {
-            invoices = invoiceRepository.findByShopIdOrderByCreatedAtDesc(shopId);
+        } else if (currentUser.getRole() == Role.ROLE_SELLER) {
+            if (shopId != null) {
+                invoices = invoiceRepository.findByShopIdOrderByCreatedAtDesc(shopId).stream()
+                        .filter(inv -> inv.getSeller() != null && inv.getSeller().getId().equals(sellerTarget.getId()))
+                        .collect(Collectors.toList());
+            } else {
+                invoices = invoiceRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt")).stream()
+                        .filter(inv -> inv.getSeller() != null && inv.getSeller().getId().equals(sellerTarget.getId()))
+                        .collect(Collectors.toList());
+            }
+        } else if (currentUser.getRole() == Role.ROLE_BUYER) {
+            Shop shop = currentUser.getShop();
+            if (shop != null) {
+                invoices = invoiceRepository.findByShopIdOrderByCreatedAtDesc(shop.getId());
+            } else {
+                invoices = Collections.emptyList();
+            }
         } else {
-            invoices = invoiceRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
+            invoices = Collections.emptyList();
         }
 
         return invoices.stream().map(this::mapToResponse).collect(Collectors.toList());
@@ -208,6 +229,33 @@ public class BillingService {
         return mapToResponse(invoice);
     }
 
+    @Transactional
+    public void deleteInvoice(Long id, String currentUserPhone) {
+        User currentUser = userRepository.findByPhoneNumber(currentUserPhone)
+                .orElseThrow(() -> new UnauthorizedException("User not authenticated"));
+
+        Invoice invoice = invoiceRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found with id: " + id));
+
+        if (currentUser.getRole() != Role.ROLE_ADMIN) {
+            if (invoice.getSeller() != null && !invoice.getSeller().getId().equals(currentUser.getId())) {
+                throw new UnauthorizedException("You do not have permission to delete this invoice.");
+            }
+        }
+
+        // Strict Safety Rule: Unpaid or Partially Paid bills CANNOT be deleted to protect Khata ledger integrity
+        if (invoice.getBalanceDue() != null && invoice.getBalanceDue().compareTo(BigDecimal.ZERO) > 0) {
+            throw new BadRequestException("Cannot delete unpaid bill #" + invoice.getInvoiceNumber() + 
+                    "! This bill has an outstanding debt of ₹" + invoice.getBalanceDue() + 
+                    ". Unpaid bills cannot be removed to preserve your Khata ledger integrity.");
+        }
+
+        if (invoice.getItems() != null) {
+            invoiceItemRepository.deleteAll(invoice.getItems());
+        }
+        invoiceRepository.delete(invoice);
+    }
+
     private InvoiceResponse mapToResponse(Invoice invoice) {
         List<InvoiceItemResponse> itemResponses = new ArrayList<>();
         if (invoice.getItems() != null) {
@@ -226,13 +274,16 @@ public class BillingService {
             }
         }
 
+        Shop s = invoice.getShop();
         return InvoiceResponse.builder()
                 .id(invoice.getId())
                 .invoiceNumber(invoice.getInvoiceNumber())
-                .shopId(invoice.getShop().getId())
-                .shopName(invoice.getShop().getShopName())
-                .village(invoice.getShop().getVillage())
-                .ownerName(invoice.getShop().getOwnerName())
+                .shopId(s.getId())
+                .shopName(s.getShopName())
+                .village(s.getVillage())
+                .route(s.getRoute())
+                .shopPhoneNumber(s.getPhoneNumber())
+                .ownerName(s.getOwnerName())
                 .sellerName(invoice.getSeller() != null ? invoice.getSeller().getFullName() : "N/A")
                 .totalAmount(invoice.getTotalAmount())
                 .amountPaid(invoice.getAmountPaid())
