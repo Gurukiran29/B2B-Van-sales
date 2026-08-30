@@ -22,12 +22,12 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     @Query("SELECT DISTINCT p.category FROM Product p WHERE p.createdBy = :user ORDER BY p.category")
     List<String> findDistinctCategoriesByCreatedBy(@Param("user") User user);
 
-    @Query("SELECT p FROM Product p WHERE p.createdBy = :user AND p.stockInDozens <= p.minStockAlert")
+    @Query("SELECT p FROM Product p WHERE p.createdBy = :user AND p.stockInDozens <= 5")
     List<Product> findLowStockProductsByCreatedBy(@Param("user") User user);
 
     @Query("SELECT DISTINCT p.category FROM Product p ORDER BY p.category")
     List<String> findDistinctCategories();
 
-    @Query("SELECT p FROM Product p WHERE p.stockInDozens <= p.minStockAlert")
+    @Query("SELECT p FROM Product p WHERE p.stockInDozens <= 5")
     List<Product> findLowStockProducts();
 }

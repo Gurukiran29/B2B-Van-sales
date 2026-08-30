@@ -3,6 +3,7 @@ package com.vansales.controller;
 import com.vansales.dto.ProductRequest;
 import com.vansales.dto.ProductResponse;
 import com.vansales.dto.StockAdjustmentRequest;
+import com.vansales.dto.StockTransferRequest;
 import com.vansales.service.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -41,43 +42,50 @@ public class ProductController {
         return ResponseEntity.ok(productService.getCategories(phone));
     }
 
-    @GetMapping("/low-stock")
-    @PreAuthorize("hasAuthority('ROLE_SELLER')")
-    public ResponseEntity<List<ProductResponse>> getLowStockProducts(@AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(productService.getLowStockProducts(userDetails.getUsername()));
-    }
-
     @PostMapping
-    @PreAuthorize("hasAuthority('ROLE_SELLER')")
+    @PreAuthorize("hasAnyRole('SELLER', 'ADMIN')")
     public ResponseEntity<ProductResponse> createProduct(
             @Valid @RequestBody ProductRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
-        return new ResponseEntity<>(productService.createProduct(request, userDetails.getUsername()), HttpStatus.CREATED);
+        String phone = userDetails != null ? userDetails.getUsername() : null;
+        return new ResponseEntity<>(productService.createProduct(request, phone), HttpStatus.CREATED);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_SELLER')")
+    @PreAuthorize("hasAnyRole('SELLER', 'ADMIN')")
     public ResponseEntity<ProductResponse> updateProduct(
             @PathVariable Long id,
             @Valid @RequestBody ProductRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(productService.updateProduct(id, request, userDetails.getUsername()));
+        String phone = userDetails != null ? userDetails.getUsername() : null;
+        return ResponseEntity.ok(productService.updateProduct(id, request, phone));
+    }
+
+    @PostMapping("/transfer-stock")
+    @PreAuthorize("hasAnyRole('SELLER', 'ADMIN')")
+    public ResponseEntity<ProductResponse> transferStock(
+            @Valid @RequestBody StockTransferRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        String phone = userDetails != null ? userDetails.getUsername() : null;
+        return ResponseEntity.ok(productService.transferStock(request, phone));
     }
 
     @PostMapping("/adjust-stock")
-    @PreAuthorize("hasAuthority('ROLE_SELLER')")
+    @PreAuthorize("hasAnyRole('SELLER', 'ADMIN')")
     public ResponseEntity<ProductResponse> adjustStock(
             @Valid @RequestBody StockAdjustmentRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(productService.adjustStock(request, userDetails.getUsername()));
+        String phone = userDetails != null ? userDetails.getUsername() : null;
+        return ResponseEntity.ok(productService.adjustStock(request, phone));
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_SELLER')")
+    @PreAuthorize("hasAnyRole('SELLER', 'ADMIN')")
     public ResponseEntity<Void> deleteProduct(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails userDetails) {
-        productService.deleteProduct(id, userDetails.getUsername());
+        String phone = userDetails != null ? userDetails.getUsername() : null;
+        productService.deleteProduct(id, phone);
         return ResponseEntity.noContent().build();
     }
 }

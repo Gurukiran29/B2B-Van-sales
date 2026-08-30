@@ -24,14 +24,21 @@ public class BillingController {
     public ResponseEntity<InvoiceResponse> createInvoice(
             @Valid @RequestBody InvoiceRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
+        String phone = userDetails != null ? userDetails.getUsername() : null;
         return new ResponseEntity<>(
-                billingService.createInvoice(request, userDetails.getUsername()),
+                billingService.createInvoice(request, phone),
                 HttpStatus.CREATED
         );
     }
 
     @GetMapping
-    public ResponseEntity<List<InvoiceResponse>> getAllInvoices() {
+    public ResponseEntity<List<InvoiceResponse>> getAllInvoices(
+            @RequestParam(required = false) Long shopId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        String phone = userDetails != null ? userDetails.getUsername() : null;
+        if (phone != null) {
+            return ResponseEntity.ok(billingService.getAllInvoices(shopId, phone));
+        }
         return ResponseEntity.ok(billingService.getAllInvoices());
     }
 

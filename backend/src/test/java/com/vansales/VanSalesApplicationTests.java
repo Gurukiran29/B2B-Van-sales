@@ -113,7 +113,6 @@ public class VanSalesApplicationTests {
                     .dozensPerBox(10)
                     .pricePerDozen(new BigDecimal("200.00"))
                     .stockInDozens(100)
-                    .minStockAlert(20)
                     .createdBy(testSeller)
                     .build();
             return productRepository.save(product);

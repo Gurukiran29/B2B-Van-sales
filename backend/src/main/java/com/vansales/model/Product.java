@@ -31,18 +31,27 @@ public class Product {
     private String category;
 
     @Column(nullable = false)
-    private Integer dozensPerBox;
+    @Builder.Default
+    private Integer dozensPerBox = 12;
+
+    @Column(precision = 10, scale = 2)
+    @Builder.Default
+    private BigDecimal purchasePricePerBox = BigDecimal.ZERO;
 
     @Column(nullable = false, precision = 10, scale = 2)
-    private BigDecimal pricePerDozen;
+    @Builder.Default
+    private BigDecimal pricePerDozen = BigDecimal.ZERO;
+
+    @Column(precision = 10, scale = 2)
+    private BigDecimal wholesaleBoxOfferPrice;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Integer godownStockInDozens = 0;
 
     @Column(nullable = false)
     @Builder.Default
     private Integer stockInDozens = 0;
-
-    @Column(nullable = false)
-    @Builder.Default
-    private Integer minStockAlert = 20;
 
     private String imageUrl;
 
@@ -58,8 +67,22 @@ public class Product {
     @UpdateTimestamp
     private LocalDateTime updatedAt;
 
-    public BigDecimal getBoxPrice() {
+    public BigDecimal getPurchasePricePerDozen() {
+        if (purchasePricePerBox == null || dozensPerBox == null || dozensPerBox == 0) {
+            return BigDecimal.ZERO;
+        }
+        return purchasePricePerBox.divide(BigDecimal.valueOf(dozensPerBox), 2, java.math.RoundingMode.HALF_UP);
+    }
+
+    public BigDecimal getEffectiveBoxPrice() {
+        if (wholesaleBoxOfferPrice != null && wholesaleBoxOfferPrice.compareTo(BigDecimal.ZERO) > 0) {
+            return wholesaleBoxOfferPrice;
+        }
         if (pricePerDozen == null || dozensPerBox == null) return BigDecimal.ZERO;
         return pricePerDozen.multiply(BigDecimal.valueOf(dozensPerBox));
+    }
+
+    public BigDecimal getBoxPrice() {
+        return getEffectiveBoxPrice();
     }
 }

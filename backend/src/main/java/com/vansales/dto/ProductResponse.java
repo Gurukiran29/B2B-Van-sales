@@ -17,12 +17,25 @@ public class ProductResponse {
     private String name;
     private String category;
     private Integer dozensPerBox;
+    
+    private BigDecimal purchasePricePerBox;
+    private BigDecimal purchasePricePerDozen;
     private BigDecimal pricePerDozen;
+    private BigDecimal wholesaleBoxOfferPrice;
     private BigDecimal boxPrice;
-    private Integer stockInDozens;
-    private Integer fullBoxesInStock;
-    private Integer remainingLooseDozens;
-    private Integer minStockAlert;
+    
+    // Godown Stock Metrics
+    private Integer godownStockInDozens;
+    private Integer godownFullBoxes;
+    private Integer godownRemainingLooseDozens;
+
+    // Van Stock Metrics
+    private Integer stockInDozens; // Van stock in dozens
+    private Integer vanFullBoxes;
+    private Integer vanRemainingLooseDozens;
+    private Integer fullBoxesInStock; // for backward compatibility
+    private Integer remainingLooseDozens; // for backward compatibility
+
     private String imageUrl;
     private String description;
 }
