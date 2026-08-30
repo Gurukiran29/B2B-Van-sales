@@ -5,6 +5,7 @@ import com.vansales.dto.InvoiceItemResponse;
 import com.vansales.dto.InvoiceRequest;
 import com.vansales.dto.InvoiceResponse;
 import com.vansales.exception.BadRequestException;
+import com.vansales.exception.InsufficientStockException;
 import com.vansales.exception.ResourceNotFoundException;
 import com.vansales.exception.UnauthorizedException;
 import com.vansales.model.*;
@@ -62,6 +63,7 @@ public class BillingService {
 
             int currentVanStock = product.getStockInDozens() != null ? product.getStockInDozens() : 0;
             if (currentVanStock < requestedDozens) {
+                throw new InsufficientStockException(String.format(
                         "Insufficient Van Stock for product %s! Available: %d units (%d boxes, %d loose), Requested: %d units (%d boxes, %d loose)",
                         product.getName(),
                         currentVanStock,
