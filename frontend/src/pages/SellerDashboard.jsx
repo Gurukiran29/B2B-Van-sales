@@ -4,11 +4,12 @@ import QuickPOS from '../components/seller/QuickPOS';
 import VanStock from '../components/seller/VanStock';
 import GodownStock from '../components/seller/GodownStock';
 import ItemCatalog from '../components/seller/ItemCatalog';
+import BillHistory from '../components/seller/BillHistory';
 import KhataLedger from '../components/seller/KhataLedger';
 import AddShopModal from '../components/seller/AddShopModal';
 import { 
   Zap, Truck, Warehouse, Tag, BookOpen, BarChart3, Plus, 
-  IndianRupee, TrendingUp, AlertTriangle, Store, RefreshCw
+  IndianRupee, TrendingUp, AlertTriangle, Store, RefreshCw, FileText
 } from 'lucide-react';
 
 const SellerDashboard = ({ showNotification }) => {
@@ -46,7 +47,7 @@ const SellerDashboard = ({ showNotification }) => {
             <span className="bg-brand-100 text-brand-800 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full">
               Van Sales Terminal
             </span>
-            <span className="text-xs text-slate-400 font-medium hidden sm:inline">• Godown & Van Distribution</span>
+            <span className="text-xs text-slate-400 font-medium hidden sm:inline">• Route Sales, Khata & Stocks</span>
           </div>
           <h1 className="text-xl font-black text-slate-900 mt-1">
             FMCG Wholesale & Van Distribution
@@ -77,6 +78,17 @@ const SellerDashboard = ({ showNotification }) => {
         </button>
 
         <button
+          onClick={() => setActiveTab('bill-history')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl whitespace-nowrap transition ${
+            activeTab === 'bill-history'
+              ? 'bg-brand-600 text-white shadow-md shadow-brand-500/25 ring-2 ring-brand-400/40'
+              : 'text-slate-700 hover:text-slate-900 hover:bg-white/70'
+          }`}
+        >
+          <FileText className="w-4 h-4" /> Bill History
+        </button>
+
+        <button
           onClick={() => setActiveTab('van-stock')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl whitespace-nowrap transition ${
             activeTab === 'van-stock'
@@ -95,7 +107,7 @@ const SellerDashboard = ({ showNotification }) => {
               : 'text-slate-700 hover:text-slate-900 hover:bg-white/70'
           }`}
         >
-          <Warehouse className="w-4 h-4" /> Godown Stocks (Warehouse)
+          <Warehouse className="w-4 h-4" /> Godown Stocks
         </button>
 
         <button
@@ -137,6 +149,12 @@ const SellerDashboard = ({ showNotification }) => {
           externalRoute={activeRoute}
           onRouteSelect={(r) => setActiveRoute(r)}
           onInvoiceCreated={handleInvoiceCreated}
+          showNotification={showNotification}
+        />
+      )}
+
+      {activeTab === 'bill-history' && (
+        <BillHistory
           showNotification={showNotification}
         />
       )}

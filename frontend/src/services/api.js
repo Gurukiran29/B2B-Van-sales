@@ -1,30 +1,31 @@
 import axios from 'axios';
 
-const API_BASE = '/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
 
 const api = axios.create({
-  baseURL: API_BASE,
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token') || localStorage.getItem('van_sales_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-}, (error) => Promise.reject(error));
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token') || localStorage.getItem('van_sales_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      localStorage.removeItem('van_sales_token');
-      localStorage.removeItem('van_sales_user');
+      // Avoid clearing token indiscriminately on transient 401s
+      console.warn('Unauthorized request to:', error.config?.url);
     }
     return Promise.reject(error);
   }
@@ -55,17 +56,20 @@ export const shopApi = {
   getRoutes: () => api.get('/shops/routes'),
   create: (data) => api.post('/shops', data),
   update: (id, data) => api.put(`/shops/${id}`, data),
-  getStatement: (id) => api.get(`/shops/${id}/statement`),
 };
 
 export const billingApi = {
   createInvoice: (data) => api.post('/billing', data),
   getAllInvoices: (shopId) => api.get('/billing', { params: { shopId } }),
   getInvoiceById: (id) => api.get(`/billing/${id}`),
+  getInvoiceByNumber: (invoiceNumber) => api.get(`/billing/number/${invoiceNumber}`),
+  deleteInvoice: (id) => api.delete(`/billing/${id}`),
 };
 
 export const paymentApi = {
-  settle: (data) => api.post('/payments/settle', data),
+  settlePayment: (data) => api.post('/payments/settle', data),
+  getAllPayments: () => api.get('/payments'),
+  getPaymentsByShopId: (shopId) => api.get(`/payments/shop/${shopId}`),
 };
 
 export const dashboardApi = {
@@ -73,8 +77,8 @@ export const dashboardApi = {
 };
 
 export const adminApi = {
-  getUsers: () => api.get('/admin/users'),
-  getStats: () => api.get('/admin/stats'),
+  getSystemStats: () => api.get('/admin/stats'),
+  getAllUsers: (role) => api.get('/admin/users', { params: { role } }),
   deleteUser: (id) => api.delete(`/admin/users/${id}`),
   deleteShop: (id) => api.delete(`/admin/shops/${id}`),
 };

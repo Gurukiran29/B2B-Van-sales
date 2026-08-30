@@ -20,7 +20,7 @@ const ItemCatalog = ({ showNotification, onNavigateToGodown, onNavigateToVan }) 
     name: '',
     category: 'Biscuits',
     customCategory: '',
-    dozensPerBox: '', // Optional: empty or 1 for direct boxes
+    dozensPerBox: '',
     boxQuantity: 1,
     purchasePricePerBox: '',
     pricePerDozen: '',
@@ -66,9 +66,9 @@ const ItemCatalog = ({ showNotification, onNavigateToGodown, onNavigateToVan }) 
     setEditingProduct(product);
     const isPreset = CATEGORY_PRESETS.includes(product.category);
     setFormData({
-      name: product.name,
+      name: product.name || '',
       category: isPreset ? product.category : 'Others',
-      customCategory: isPreset ? '' : product.category,
+      customCategory: isPreset ? '' : (product.category || ''),
       dozensPerBox: product.dozensPerBox > 1 ? product.dozensPerBox : '',
       boxQuantity: product.godownFullBoxes || 0,
       purchasePricePerBox: product.purchasePricePerBox || '',
@@ -89,7 +89,6 @@ const ItemCatalog = ({ showNotification, onNavigateToGodown, onNavigateToVan }) 
       ? formData.customCategory.trim()
       : formData.category;
 
-    // Dozens per box: if empty or <= 1, default to 1 (direct item/box)
     const dozensPerBox = parseInt(formData.dozensPerBox) > 1 ? parseInt(formData.dozensPerBox) : 1;
     const boxQuantity = parseInt(formData.boxQuantity) || 0;
 
@@ -159,8 +158,8 @@ const ItemCatalog = ({ showNotification, onNavigateToGodown, onNavigateToVan }) 
   const filteredProducts = products.filter(p => {
     const matchesCat = selectedCategory === 'ALL' || p.category === selectedCategory;
     const matchesSearch = searchQuery === '' || 
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.category.toLowerCase().includes(searchQuery.toLowerCase());
+      (p.name && p.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (p.category && p.category.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesCat && matchesSearch;
   });
 
@@ -276,6 +275,12 @@ const ItemCatalog = ({ showNotification, onNavigateToGodown, onNavigateToVan }) 
                   const isSingleBox = (!p.dozensPerBox || p.dozensPerBox === 1);
                   const costPerBox = parseFloat(p.purchasePricePerBox || 0);
                   const offerBox = parseFloat(p.wholesaleBoxOfferPrice || p.boxPrice || 0);
+                  const dozenPrice = parseFloat(p.pricePerDozen || 0);
+                  const godownBoxes = p.godownFullBoxes !== undefined ? p.godownFullBoxes : 0;
+                  const godownLoose = p.godownRemainingLooseDozens !== undefined ? p.godownRemainingLooseDozens : 0;
+                  const vanBoxes = p.vanFullBoxes !== undefined ? p.vanFullBoxes : 0;
+                  const vanLoose = p.vanRemainingLooseDozens !== undefined ? p.vanRemainingLooseDozens : 0;
+
                   const profitPerBox = offerBox > 0 && costPerBox > 0 ? (offerBox - costPerBox) : null;
                   const marginPct = profitPerBox !== null && costPerBox > 0 ? ((profitPerBox / costPerBox) * 100).toFixed(1) : null;
 
@@ -298,15 +303,15 @@ const ItemCatalog = ({ showNotification, onNavigateToGodown, onNavigateToVan }) 
                             Direct Box (No Dozens)
                           </span>
                         ) : (
-                          <span className="font-bold">{p.dozensPerBox} doz/box</span>
+                          <span className="font-bold">{p.dozensPerBox || 1} doz/box</span>
                         )}
                       </td>
                       <td className="py-3 px-4 text-center">
                         <span className="bg-slate-100 text-slate-900 font-bold px-2.5 py-1 rounded-lg text-xs font-mono">
                           {isSingleBox ? (
-                            `${p.godownFullBoxes} Boxes`
+                            `${godownBoxes} Boxes`
                           ) : (
-                            `${p.godownFullBoxes}b + ${p.godownRemainingLooseDozens}d`
+                            `${godownBoxes}b + ${godownLoose}d`
                           )}
                         </span>
                       </td>
@@ -325,15 +330,15 @@ const ItemCatalog = ({ showNotification, onNavigateToGodown, onNavigateToVan }) 
                         {isSingleBox ? (
                           <span className="text-slate-400">—</span>
                         ) : (
-                          `₹${parseFloat(p.pricePerDozen).toFixed(2)}`
+                          `₹${dozenPrice.toFixed(2)}`
                         )}
                       </td>
                       <td className="py-3 px-4 text-center">
                         <span className="bg-brand-50 text-brand-800 font-bold px-2 py-1 rounded-lg text-xs font-mono">
                           {isSingleBox ? (
-                            `${p.vanFullBoxes} Boxes`
+                            `${vanBoxes} Boxes`
                           ) : (
-                            `${p.vanFullBoxes}b + ${p.vanRemainingLooseDozens}d`
+                            `${vanBoxes}b + ${vanLoose}d`
                           )}
                         </span>
                       </td>
