@@ -60,6 +60,7 @@ export const shopApi = {
 
 export const billingApi = {
   createInvoice: (data) => api.post('/billing', data),
+  updateInvoice: (id, data) => api.put(`/billing/${id}`, data),
   getAllInvoices: (shopId) => api.get('/billing', { params: { shopId } }),
   getInvoiceById: (id) => api.get(`/billing/${id}`),
   getInvoiceByNumber: (invoiceNumber) => api.get(`/billing/number/${invoiceNumber}`),
