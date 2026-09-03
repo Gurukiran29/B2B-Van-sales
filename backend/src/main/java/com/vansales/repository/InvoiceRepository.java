@@ -23,4 +23,40 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
     @Query("SELECT i FROM Invoice i JOIN FETCH i.items WHERE i.invoiceNumber = :invoiceNumber")
     Optional<Invoice> findByInvoiceNumberWithItems(@Param("invoiceNumber") String invoiceNumber);
+
+    // Ultra-Fast JOIN FETCH queries (Eliminates N+1 latency over Neon DB)
+    @Query("SELECT DISTINCT i FROM Invoice i " +
+           "JOIN FETCH i.shop s " +
+           "LEFT JOIN FETCH i.seller u " +
+           "LEFT JOIN FETCH i.items it " +
+           "LEFT JOIN FETCH it.product p " +
+           "ORDER BY i.createdAt DESC")
+    List<Invoice> findAllWithDetails();
+
+    @Query("SELECT DISTINCT i FROM Invoice i " +
+           "JOIN FETCH i.shop s " +
+           "LEFT JOIN FETCH i.seller u " +
+           "LEFT JOIN FETCH i.items it " +
+           "LEFT JOIN FETCH it.product p " +
+           "WHERE s.id = :shopId " +
+           "ORDER BY i.createdAt DESC")
+    List<Invoice> findByShopIdWithDetails(@Param("shopId") Long shopId);
+
+    @Query("SELECT DISTINCT i FROM Invoice i " +
+           "JOIN FETCH i.shop s " +
+           "LEFT JOIN FETCH i.seller u " +
+           "LEFT JOIN FETCH i.items it " +
+           "LEFT JOIN FETCH it.product p " +
+           "WHERE u.id = :sellerId " +
+           "ORDER BY i.createdAt DESC")
+    List<Invoice> findBySellerIdWithDetails(@Param("sellerId") Long sellerId);
+
+    @Query("SELECT DISTINCT i FROM Invoice i " +
+           "JOIN FETCH i.shop s " +
+           "LEFT JOIN FETCH i.seller u " +
+           "LEFT JOIN FETCH i.items it " +
+           "LEFT JOIN FETCH it.product p " +
+           "WHERE u.id = :sellerId AND s.id = :shopId " +
+           "ORDER BY i.createdAt DESC")
+    List<Invoice> findBySellerIdAndShopIdWithDetails(@Param("sellerId") Long sellerId, @Param("shopId") Long shopId);
 }

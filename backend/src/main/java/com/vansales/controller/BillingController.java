@@ -32,6 +32,16 @@ public class BillingController {
         );
     }
 
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SELLER', 'ADMIN')")
+    public ResponseEntity<InvoiceResponse> updateInvoice(
+            @PathVariable Long id,
+            @Valid @RequestBody InvoiceRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        String phone = userDetails != null ? userDetails.getUsername() : null;
+        return ResponseEntity.ok(billingService.updateInvoice(id, request, phone));
+    }
+
     @GetMapping
     public ResponseEntity<List<InvoiceResponse>> getAllInvoices(
             @RequestParam(required = false) Long shopId,

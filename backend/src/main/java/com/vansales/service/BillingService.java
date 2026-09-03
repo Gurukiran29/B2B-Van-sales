@@ -163,6 +163,178 @@ public class BillingService {
         return mapToResponse(savedInvoice);
     }
 
+    @Transactional
+    public InvoiceResponse updateInvoice(Long id, InvoiceRequest request, String sellerPhoneNumber) {
+        User currentUser = userRepository.findByPhoneNumber(sellerPhoneNumber)
+                .orElseThrow(() -> new UnauthorizedException("User not authenticated"));
+
+        Invoice invoice = invoiceRepository.findByIdWithItems(id)
+                .or(() -> invoiceRepository.findById(id))
+                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found with id: " + id));
+
+        if (currentUser.getRole() != Role.ROLE_ADMIN) {
+            if (invoice.getSeller() != null && !invoice.getSeller().getId().equals(currentUser.getId())) {
+                throw new UnauthorizedException("You do not have permission to modify this invoice.");
+            }
+        }
+
+        Shop oldShop = invoice.getShop();
+
+        // 1. Revert previous stock deductions back to Van Stock
+        if (invoice.getItems() != null) {
+            for (InvoiceItem oldItem : invoice.getItems()) {
+                Product product = oldItem.getProduct();
+                if (product != null) {
+                    int currentStock = product.getStockInDozens() != null ? product.getStockInDozens() : 0;
+                    product.setStockInDozens(currentStock + oldItem.getTotalDozens());
+                    productRepository.save(product);
+                }
+            }
+        }
+
+        // 2. Revert previous balance due from shop's outstanding balance
+        BigDecimal oldBalanceDue = invoice.getBalanceDue() != null ? invoice.getBalanceDue() : BigDecimal.ZERO;
+        BigDecimal shopBalanceWithoutOldInvoice = (oldShop.getOutstandingBalance() != null ? oldShop.getOutstandingBalance() : BigDecimal.ZERO).subtract(oldBalanceDue);
+        oldShop.setOutstandingBalance(shopBalanceWithoutOldInvoice);
+        shopRepository.save(oldShop);
+
+        // 3. Clear old spot payment records associated with this invoice
+        String spotNoteMatch = "Invoice #" + invoice.getInvoiceNumber() + " Spot Collection";
+        List<PaymentRecord> oldPayments = paymentRecordRepository.findAll().stream()
+                .filter(p -> p.getNotes() != null && p.getNotes().contains(spotNoteMatch))
+                .collect(Collectors.toList());
+        if (!oldPayments.isEmpty()) {
+            paymentRecordRepository.deleteAll(oldPayments);
+        }
+
+        // 4. Check if shop was changed in request
+        Shop shop = oldShop;
+        if (request.getShopId() != null && !request.getShopId().equals(oldShop.getId())) {
+            shop = shopRepository.findById(request.getShopId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Shop not found with id: " + request.getShopId()));
+        }
+
+        // 5. Calculate new items, validate stock, and deduct
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        List<InvoiceItem> newInvoiceItems = new ArrayList<>();
+
+        for (InvoiceItemRequest itemReq : request.getItems()) {
+            Product product = productRepository.findById(itemReq.getProductId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + itemReq.getProductId()));
+
+            int dozensPerBox = (product.getDozensPerBox() != null && product.getDozensPerBox() > 0) ? product.getDozensPerBox() : 1;
+            int boxes = itemReq.getBoxesCount() != null ? itemReq.getBoxesCount() : 0;
+            int looseDozens = itemReq.getLooseDozens() != null ? itemReq.getLooseDozens() : 0;
+            int requestedDozens = (boxes * dozensPerBox) + looseDozens;
+
+            if (requestedDozens <= 0) {
+                continue;
+            }
+
+            int currentVanStock = product.getStockInDozens() != null ? product.getStockInDozens() : 0;
+            if (currentVanStock < requestedDozens) {
+                throw new InsufficientStockException(String.format(
+                        "Insufficient Van Stock for product %s! Available: %d units (%d boxes, %d loose), Requested: %d units (%d boxes, %d loose)",
+                        product.getName(),
+                        currentVanStock,
+                        currentVanStock / dozensPerBox,
+                        currentVanStock % dozensPerBox,
+                        requestedDozens,
+                        boxes,
+                        looseDozens
+                ));
+            }
+
+            product.setStockInDozens(currentVanStock - requestedDozens);
+            productRepository.save(product);
+
+            BigDecimal effectiveBoxPrice = product.getEffectiveBoxPrice();
+            BigDecimal pricePerDozen = product.getPricePerDozen() != null ? product.getPricePerDozen() : BigDecimal.ZERO;
+
+            BigDecimal boxTotal = effectiveBoxPrice.multiply(BigDecimal.valueOf(boxes));
+            BigDecimal looseTotal = pricePerDozen.multiply(BigDecimal.valueOf(looseDozens));
+            BigDecimal itemSubtotal = boxTotal.add(looseTotal);
+
+            InvoiceItem invoiceItem = InvoiceItem.builder()
+                    .product(product)
+                    .boxesCount(boxes)
+                    .looseDozens(looseDozens)
+                    .totalDozens(requestedDozens)
+                    .pricePerDozen(pricePerDozen)
+                    .subtotal(itemSubtotal)
+                    .invoice(invoice)
+                    .build();
+
+            newInvoiceItems.add(invoiceItem);
+            totalAmount = totalAmount.add(itemSubtotal);
+        }
+
+        if (newInvoiceItems.isEmpty()) {
+            throw new BadRequestException("Invoice must contain at least one product item with quantity > 0");
+        }
+
+        // Delete old items and insert new
+        if (invoice.getItems() != null) {
+            invoiceItemRepository.deleteAll(invoice.getItems());
+            invoice.getItems().clear();
+        }
+
+        for (InvoiceItem item : newInvoiceItems) {
+            invoice.getItems().add(invoiceItemRepository.save(item));
+        }
+
+        BigDecimal amountPaid = request.getAmountPaid() != null ? request.getAmountPaid() : BigDecimal.ZERO;
+        PaymentMode paymentMode = request.getPaymentMode() != null ? request.getPaymentMode() : PaymentMode.CASH;
+
+        if (amountPaid.compareTo(BigDecimal.ZERO) < 0) {
+            throw new BadRequestException("Amount paid cannot be negative");
+        }
+
+        BigDecimal balanceDue = totalAmount.subtract(amountPaid);
+        PaymentStatus paymentStatus;
+
+        if (balanceDue.compareTo(BigDecimal.ZERO) <= 0) {
+            paymentStatus = PaymentStatus.PAID;
+            balanceDue = BigDecimal.ZERO;
+        } else if (amountPaid.compareTo(BigDecimal.ZERO) > 0) {
+            paymentStatus = PaymentStatus.PARTIAL;
+        } else {
+            paymentStatus = PaymentStatus.UNPAID;
+        }
+
+        BigDecimal currentShopBalance = shop.getOutstandingBalance() != null ? shop.getOutstandingBalance() : BigDecimal.ZERO;
+        BigDecimal newShopBalance = currentShopBalance.add(balanceDue);
+        shop.setOutstandingBalance(newShopBalance);
+        shopRepository.save(shop);
+
+        invoice.setShop(shop);
+        invoice.setTotalAmount(totalAmount);
+        invoice.setAmountPaid(amountPaid);
+        invoice.setBalanceDue(balanceDue);
+        invoice.setPaymentStatus(paymentStatus);
+        invoice.setPaymentMode(paymentMode);
+        if (request.getNotes() != null) {
+            invoice.setNotes(request.getNotes());
+        }
+
+        Invoice updatedInvoice = invoiceRepository.save(invoice);
+
+        if (amountPaid.compareTo(BigDecimal.ZERO) > 0) {
+            PaymentRecord paymentRecord = PaymentRecord.builder()
+                    .shop(shop)
+                    .amount(amountPaid)
+                    .paymentMode(paymentMode)
+                    .previousBalance(currentShopBalance.add(totalAmount))
+                    .remainingBalance(newShopBalance)
+                    .recordedBy(currentUser)
+                    .notes("Invoice #" + invoice.getInvoiceNumber() + " Spot Collection")
+                    .build();
+            paymentRecordRepository.save(paymentRecord);
+        }
+
+        return mapToResponse(updatedInvoice);
+    }
+
     @Transactional(readOnly = true)
     public List<InvoiceResponse> getAllInvoices() {
         return invoiceRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt")).stream()
